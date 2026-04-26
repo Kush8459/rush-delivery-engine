@@ -1,0 +1,69 @@
+# Pure Kafka consumers — no HTTP, no Service object needed.
+# Scale by replicas to partition-parallel limits (= number of partitions on
+# the consumed topic; extra replicas sit idle).
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: assignment-service
+  namespace: rush
+  labels: { app: assignment-service }
+spec:
+  replicas: 2
+  selector:
+    matchLabels: { app: assignment-service }
+  template:
+    metadata:
+      labels: { app: assignment-service }
+    spec:
+      containers:
+        - name: assignment-service
+          image: rush/assignment-service:latest
+          imagePullPolicy: IfNotPresent
+          env:
+            - { name: CONFIG_PATH, value: /config/config.yaml }
+          envFrom:
+            - secretRef: { name: rush-secrets }
+          volumeMounts:
+            - { name: config, mountPath: /config }
+          resources:
+            requests: { cpu: 50m, memory: 64Mi }
+            limits:   { cpu: 500m, memory: 256Mi }
+      volumes:
+        - name: config
+          configMap:
+            name: rush-config
+            items: [{ key: config.yaml, path: config.yaml }]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: eta-service
+  namespace: rush
+  labels: { app: eta-service }
+spec:
+  replicas: 2
+  selector:
+    matchLabels: { app: eta-service }
+  template:
+    metadata:
+      labels: { app: eta-service }
+    spec:
+      containers:
+        - name: eta-service
+          image: rush/eta-service:latest
+          imagePullPolicy: IfNotPresent
+          env:
+            - { name: CONFIG_PATH, value: /config/config.yaml }
+          envFrom:
+            - secretRef: { name: rush-secrets }
+          volumeMounts:
+            - { name: config, mountPath: /config }
+          resources:
+            requests: { cpu: 50m, memory: 64Mi }
+            limits:   { cpu: 500m, memory: 256Mi }
+      volumes:
+        - name: config
+          configMap:
+            name: rush-config
+            items: [{ key: config.yaml, path: config.yaml }]

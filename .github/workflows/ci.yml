@@ -1,0 +1,63 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# Cancel in-progress runs on the same ref — new commit supersedes old.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  go:
+    name: Go — test, vet, build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.25'
+          cache: true
+
+      - name: Download deps
+        run: go mod download
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Test
+        run: go test -race -count=1 ./...
+
+      - name: Build all binaries
+        run: |
+          mkdir -p bin
+          for svc in order-service rider-service location-service assignment-service eta-service notification-service; do
+            echo "building $svc"
+            CGO_ENABLED=0 go build -ldflags="-s -w" -o bin/$svc ./cmd/$svc
+          done
+          ls -lh bin/
+
+  docker:
+    name: Docker — smoke build
+    runs-on: ubuntu-latest
+    needs: [go]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+
+      # Build one service as a smoke test. If the Dockerfile is broken for one
+      # it's broken for all (same recipe, different SERVICE arg).
+      - name: Build order-service image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          build-args: |
+            SERVICE=order-service
+          push: false
+          tags: rush/order-service:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

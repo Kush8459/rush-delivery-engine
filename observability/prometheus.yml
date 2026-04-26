@@ -1,0 +1,17 @@
+global:
+  scrape_interval: 10s
+  evaluation_interval: 10s
+
+scrape_configs:
+  - job_name: 'order-service'
+    static_configs:
+      - targets: ['order-service:8080']
+  - job_name: 'rider-service'
+    static_configs:
+      - targets: ['rider-service:8081']
+  - job_name: 'location-service'
+    static_configs:
+      - targets: ['location-service:8083']
+  - job_name: 'notification-service'
+    static_configs:
+      - targets: ['notification-service:8085']

@@ -1,0 +1,154 @@
+services:
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_DB: delivery_engine
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      # Host 5433 → container 5432 to avoid clashing with a native
+      # Windows Postgres install that may already bind host 5432.
+      - "5433:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # Single-node Kafka in KRaft mode — no ZooKeeper needed.
+  # Using Apache's official image (Bitnami images were paywalled in 2025).
+  #
+  # Dual listeners:
+  #   INTERNAL (kafka:29092) → used by services inside the compose network
+  #   EXTERNAL (localhost:9092) → used by Go services running on the host
+  kafka:
+    image: apache/kafka:3.8.0
+    ports:
+      - "9092:9092"
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENERS: INTERNAL://:29092,EXTERNAL://:9092,CONTROLLER://:9093
+      KAFKA_ADVERTISED_LISTENERS: INTERNAL://kafka:29092,EXTERNAL://localhost:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: INTERNAL:PLAINTEXT,EXTERNAL:PLAINTEXT,CONTROLLER:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@localhost:9093
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+
+  # ---- application services (optional) ----
+  # Enable with:  docker compose --profile app up -d
+  # Without the profile flag, only the infra above starts (what you want
+  # when running Go services directly on the host with `go run`).
+
+  order-service:
+    profiles: [app]
+    build:
+      context: .
+      args: { SERVICE: order-service }
+    ports: ["8080:8080"]
+    depends_on: [postgres, redis, kafka]
+    restart: unless-stopped
+
+  rider-service:
+    profiles: [app]
+    build:
+      context: .
+      args: { SERVICE: rider-service }
+    ports: ["8081:8081"]
+    depends_on: [postgres, redis]
+    restart: unless-stopped
+
+  location-service:
+    profiles: [app]
+    build:
+      context: .
+      args: { SERVICE: location-service }
+    ports: ["8083:8083"]
+    depends_on: [redis, kafka]
+    restart: unless-stopped
+
+  notification-service:
+    profiles: [app]
+    build:
+      context: .
+      args: { SERVICE: notification-service }
+    ports: ["8085:8085"]
+    depends_on: [postgres, kafka]
+    restart: unless-stopped
+
+  assignment-service:
+    profiles: [app]
+    build:
+      context: .
+      args: { SERVICE: assignment-service }
+    depends_on: [postgres, redis, kafka]
+    restart: unless-stopped
+
+  eta-service:
+    profiles: [app]
+    build:
+      context: .
+      args: { SERVICE: eta-service }
+    depends_on: [postgres, kafka]
+    restart: unless-stopped
+
+  # ---- observability (profile: obs) ----
+  # Enable with:  docker compose --profile app --profile obs up -d
+
+  prometheus:
+    profiles: [obs]
+    image: prom/prometheus:v2.55.0
+    ports: ["9090:9090"]
+    volumes:
+      - ./observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    restart: unless-stopped
+
+  grafana:
+    profiles: [obs]
+    image: grafana/grafana:11.2.2
+    ports: ["3000:3000"]
+    environment:
+      # Dev-only. Don't run with these defaults in anything that matters.
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+    volumes:
+      - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana-data:/var/lib/grafana
+    depends_on: [prometheus]
+    restart: unless-stopped
+
+  # Jaeger all-in-one: receives OTLP over HTTP (port 4318) and serves the
+  # trace UI on port 16686. Services export here via otlptracehttp.
+  jaeger:
+    profiles: [obs]
+    image: jaegertracing/all-in-one:1.76.0
+    environment:
+      COLLECTOR_OTLP_ENABLED: "true"
+    ports:
+      - "16686:16686"  # UI — http://localhost:16686
+      - "4318:4318"    # OTLP HTTP receiver
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+  grafana-data:

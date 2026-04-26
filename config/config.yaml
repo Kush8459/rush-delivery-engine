@@ -1,0 +1,36 @@
+env: local
+
+postgres:
+  host: localhost
+  port: 5433
+  name: delivery_engine
+  user: postgres
+  password: postgres
+  sslmode: disable
+
+redis:
+  addr: localhost:6379
+  password: ""
+  db: 0
+
+kafka:
+  brokers:
+    - localhost:9092
+  group_id: delivery-engine
+
+services:
+  order_port: 8080
+  rider_port: 8081
+  location_port: 8083
+  notify_port: 8085
+
+rate_limit:
+  orders_per_minute: 5
+
+auth:
+  jwt_secret: dev-only-secret-change-me
+  ttl_hours: 24
+
+telemetry:
+  enabled: true
+  otlp_endpoint: localhost:4318

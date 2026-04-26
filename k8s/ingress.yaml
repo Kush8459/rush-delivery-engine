@@ -1,0 +1,46 @@
+# Example NGINX ingress. Adjust host + controller annotations for your cluster.
+# WebSocket upgrade is enabled on /ws paths via `proxy-read-timeout`.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: rush-ingress
+  namespace: rush
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: rush.local
+      http:
+        paths:
+          - path: /api/v1/orders
+            pathType: Prefix
+            backend:
+              service:
+                name: order-service
+                port: { number: 8080 }
+          - path: /api/v1/auth
+            pathType: Prefix
+            backend:
+              service:
+                name: order-service
+                port: { number: 8080 }
+          - path: /api/v1/riders
+            pathType: Prefix
+            backend:
+              service:
+                name: rider-service
+                port: { number: 8081 }
+          - path: /ws/rider
+            pathType: Prefix
+            backend:
+              service:
+                name: location-service
+                port: { number: 8083 }
+          - path: /ws/order
+            pathType: Prefix
+            backend:
+              service:
+                name: notification-service
+                port: { number: 8085 }

@@ -1,0 +1,24 @@
+# Binaries
+/bin/
+*.exe
+*.test
+*.out
+
+# Go
+vendor/
+
+# Editor / IDE
+.idea/
+.vscode/
+*.swp
+
+# Env
+.env
+.env.local
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docker volumes
+pgdata/
